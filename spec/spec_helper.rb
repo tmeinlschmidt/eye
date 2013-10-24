@@ -63,6 +63,8 @@ RSpec.configure do |config|
   end
 
   config.before(:each) do
+    Eye.instance_variable_set(:@ctrl, nil)
+    Eye::SystemResources.instance_variable_set(:@cache, nil)
     SimpleCov.command_name "RSpec:#{Process.pid}#{ENV['TEST_ENV_NUMBER']}" if defined?(SimpleCov)
 
     clear_pids
@@ -83,10 +85,8 @@ RSpec.configure do |config|
       @pids.each { |p| force_kill_pid(p) }
     end
 
-    terminate_old_actors
-
-    # actors = Celluloid::Actor.all.map(&:class)
-    # $logger.info "Actors: #{actors.inspect}"
+    Celluloid.shutdown
+    Celluloid.boot
   end
 
   config.after(:all) do
@@ -100,19 +100,6 @@ def clear_pids
   end
   FileUtils.rm(C.just_pid) rescue nil
   FileUtils.rm(C.tmp_file) rescue nil
-end
-
-def terminate_old_actors
-  Celluloid::Actor.all.each do |actor|
-    next unless actor.alive?
-    if [Eye::Controller, Eye::Process, Eye::Group, Eye::ChildProcess].include?(actor.class)
-      next if actor == Eye::Control
-      actor.terminate
-    end
-  end
-
-rescue => ex
-  $logger.error [ex.message, ex.backtrace]
 end
 
 def force_kill_process(process)

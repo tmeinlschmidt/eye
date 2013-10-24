@@ -22,7 +22,7 @@ class Eye::Notify
 
   def self.notify(contact, message_h)
     contact = contact.to_s
-    settings = Eye::Control.settings
+    settings = Eye::ctrl.settings
     needed_hash = (settings[:contacts] || {})[contact]
 
     if needed_hash.blank?
