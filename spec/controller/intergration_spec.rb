@@ -84,4 +84,16 @@ describe "Intergration" do
     sleep 0.5
   end
 
+  it "stop_all" do
+    @processes.map(&:state_name).uniq.should == [:up]
+    @pids.map { |p| Eye::System.pid_alive?(p) }.uniq.should == [true]
+
+    should_spend(4, 3.5) do
+      @controller.command(:stop_all)
+    end
+
+    @processes.map(&:state_name).uniq.should == [:unmonitored]
+    @pids.map { |p| Eye::System.pid_alive?(p) }.uniq.should == [false]
+  end
+
 end

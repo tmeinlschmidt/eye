@@ -8,8 +8,9 @@ module Eye::Controller::Status
       :about => Eye::ABOUT,
       :resources => Eye::SystemResources.resources($$),
       :ruby => RUBY_DESCRIPTION,
-      :gems => %w|Celluloid Celluloid::IO StateMachine NIO Sigar|.map{|c| gem_version(c) },
-      :logger => Eye::Logger.args.present? ? [Eye::Logger.dev, *Eye::Logger.args] : Eye::Logger.dev,
+      :gems => %w|Celluloid Celluloid::IO StateMachine NIO Timers Sigar|.map{|c| gem_version(c) },
+      :logger => Eye::Logger.args.present? ? [Eye::Logger.dev.to_s, *Eye::Logger.args] : Eye::Logger.dev.to_s,
+      :dir => Eye::Local.dir,
       :pid_path => Eye::Local::pid_path,
       :sock_path => Eye::Local::socket_path,
       :actors => actors
@@ -59,8 +60,9 @@ private
     args = ['*'] if args.empty?
     res = []
     matched_objects(*args) do |obj|
-      if (obj.is_a?(Eye::Process) || obj.is_a?(Eye::ChildProcess))
+      if obj.is_a?(Eye::Process)
         res << obj
+      elsif obj.is_a?(Eye::ChildProcess)
       else
         res += obj.processes.to_a
       end

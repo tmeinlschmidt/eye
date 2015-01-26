@@ -12,7 +12,7 @@ module Eye::Controller::Options
   end
 
   def set_opt_http(opts = {})
-    # stub!
+    warn "Warning, set http options not in reel-eye gem" if opts.present?
   end
 
 end

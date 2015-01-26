@@ -29,8 +29,8 @@ class Eye::Logger
 
     Logger::Severity.constants.each do |level|
       method_name = level.to_s.downcase
-      define_method method_name do |msg|
-        logger.send(method_name, msg)
+      define_method method_name do |msg = nil, &block|
+        logger.send(method_name, msg, &block)
       end
     end
 
@@ -42,8 +42,12 @@ class Eye::Logger
 
   Logger::Severity.constants.each do |level|
     method_name = level.to_s.downcase
-    define_method method_name do |msg|
-      self.class.inner_logger.send(method_name, "#{prefix_str}#{msg}")
+    define_method method_name do |msg = nil, &block|
+      if block
+        self.class.inner_logger.send(method_name) { "#{prefix_str}#{block.call}" }
+      else
+        self.class.inner_logger.send(method_name, "#{prefix_str}#{msg}")
+      end
     end
   end
 
@@ -57,17 +61,23 @@ class Eye::Logger
 
     def link_logger(dev, *args)
       old_dev = @dev
-      @dev = dev ? dev.to_s : nil
-      @dev_fd = @dev
+      @dev = @dev_fd = dev
       @args = args
 
-      @dev_fd = STDOUT if @dev.to_s.downcase == 'stdout'
-      @dev_fd = STDERR if @dev.to_s.downcase == 'stderr'
+      if dev.nil?
+        @inner_logger = InnerLogger.new(nil)
+      elsif dev.is_a?(String)
+        @dev_fd = STDOUT if @dev.to_s.downcase == 'stdout'
+        @dev_fd = STDERR if @dev.to_s.downcase == 'stderr'
+        @inner_logger = InnerLogger.new(@dev_fd, *args)
+      else
+        @inner_logger = dev
+      end
 
-      @inner_logger = InnerLogger.new(@dev_fd, *args)
       @inner_logger.level = self.log_level || Logger::INFO
 
-    rescue Errno::ENOENT, Errno::EACCES
+    rescue Exception
+      @inner_logger = nil
       @dev = old_dev
       raise
     end

@@ -4,15 +4,15 @@ class Eye::Dsl::Opts < Eye::Dsl::PureOpts
     :stop_command, :restart_command, :uid, :gid ]
   create_options_methods(STR_OPTIONS, String)
 
-  BOOL_OPTIONS = [ :daemonize, :keep_alive, :auto_start, :stop_on_delete, :clear_pid ]
+  BOOL_OPTIONS = [ :daemonize, :keep_alive, :auto_start, :stop_on_delete, :clear_pid, :preserve_fds, :use_leaf_child, :clear_env ]
   create_options_methods(BOOL_OPTIONS, [TrueClass, FalseClass])
 
   INTERVAL_OPTIONS = [ :check_alive_period, :start_timeout, :restart_timeout, :stop_timeout, :start_grace,
-    :restart_grace, :stop_grace, :childs_update_period, :restore_in ]
+    :restart_grace, :stop_grace, :children_update_period, :restore_in,
+    :auto_update_pidfile_grace, :revert_fuckup_pidfile_grace ]
   create_options_methods(INTERVAL_OPTIONS, [Fixnum, Float])
 
   create_options_methods([:environment], Hash)
-  create_options_methods([:stop_signals], Array)
   create_options_methods([:umask], Fixnum)
 
 
@@ -23,7 +23,7 @@ class Eye::Dsl::Opts < Eye::Dsl::PureOpts
     @config[:group] = parent.name if parent.is_a?(Eye::Dsl::GroupOpts)
 
     # hack for full name
-    @full_name = parent.full_name if @name == '__default__'
+    @full_name = parent.full_name if @name == '__default__' && parent.respond_to?(:full_name)
   end
 
   def checks(type, opts = {})
@@ -67,6 +67,19 @@ class Eye::Dsl::Opts < Eye::Dsl::PureOpts
   alias trigger triggers
   alias notrigger notriggers
 
+  def command(cmd, arg)
+    @config[:user_commands] ||= {}
+
+    if arg.is_a?(Array)
+      validate_signals(arg)
+    elsif arg.is_a?(String)
+    else
+      raise Eye::Dsl::Error, "unknown command #{cmd.inspect} type should be String or Array"
+    end
+
+    @config[:user_commands][cmd.to_sym] = arg
+  end
+
   def notify(contact, level = :warn)
     unless Eye::Process::Notify::LEVELS[level]
       raise Eye::Dsl::Error, "level should be in #{Eye::Process::Notify::LEVELS.keys}"
@@ -79,6 +92,27 @@ class Eye::Dsl::Opts < Eye::Dsl::PureOpts
   def nonotify(contact)
     @config[:notify] ||= {}
     @config[:notify].delete(contact.to_s)
+  end
+
+  def set_stop_command(cmd)
+    raise Eye::Dsl::Error, "cannot use both stop_signals and stop_command" if @config[:stop_signals]
+    super
+  end
+
+  def stop_signals(*args)
+    raise Eye::Dsl::Error, "cannot use both stop_signals and stop_command" if @config[:stop_command]
+
+    if args.count == 0
+      return @config[:stop_signals]
+    end
+
+    signals = Array(args).flatten
+    validate_signals(signals)
+    @config[:stop_signals] = signals
+  end
+
+  def stop_signals=(s)
+    stop_signals(s)
   end
 
   def set_environment(value)
@@ -111,28 +145,14 @@ class Eye::Dsl::Opts < Eye::Dsl::PureOpts
     set_daemonize true
   end
 
+  def clear_bundler_env
+    env('GEM_PATH' => nil, 'GEM_HOME' => nil, 'RUBYOPT' => nil, 'BUNDLE_BIN_PATH' => nil, 'BUNDLE_GEMFILE' => nil)
+  end
+
   def scoped(&block)
     h = self.class.new(self.name, self)
     h.instance_eval(&block)
-
-    groups = h.config.delete :groups
-
-    if groups.present?
-      config[:groups] ||= {}
-      groups.each do |name, cfg|
-        processes = cfg.delete(:processes) || {}
-        config[:groups][name] ||= {}
-        config[:groups][name].merge!(cfg)
-        config[:groups][name][:processes] ||= {}
-        config[:groups][name][:processes].merge!(processes)
-      end
-    end
-
-    processes = h.config.delete :processes
-    if processes.present?
-      config[:processes] ||= {}
-      config[:processes].merge!(processes)
-    end
+    Eye::Utils.deep_merge!(config, h.config, [:groups, :processes])
   end
 
   # execute part of config on particular server
@@ -159,6 +179,46 @@ class Eye::Dsl::Opts < Eye::Dsl::PureOpts
     end
 
     on_server
+  end
+
+  def load_env(filename = '~/.env', raise_when_no_file = true)
+    fnames = [File.expand_path(filename, @config[:working_dir]),
+      File.expand_path(filename)].uniq
+    filenames = fnames.select { |f| File.exists?(f) }
+
+    if filenames.size < 1
+      unless raise_when_no_file
+        warn "load_env not found file: '#{filenames.first}'"
+        return
+      else
+        raise Eye::Dsl::Error, "load_env not found in #{fnames}"
+      end
+    end
+    raise Eye::Dsl::Error, "load_env conflict filenames: #{filenames}" if filenames.size > 1
+
+    content = File.read(filenames.first)
+    info "load_env from '#{filenames.first}'"
+
+    env_vars = content.split("\n")
+    env_vars.each do |e|
+      next unless e.include?('=')
+      k, *v = e.split('=')
+      env k => v.join('=')
+    end
+  end
+
+private
+
+  def validate_signals(signals = nil)
+    return unless signals
+    raise Eye::Dsl::Error, "signals should be Array" unless signals.is_a?(Array)
+    s = signals.clone
+    while s.present?
+      sig = s.shift
+      timeout = s.shift
+      raise Eye::Dsl::Error, "signal should be String, Symbol, Fixnum, not #{sig.inspect}" if sig && ![String, Symbol, Fixnum].include?(sig.class)
+      raise Eye::Dsl::Error, "signal sleep should be Numeric, not #{timeout.inspect}" if timeout && ![Fixnum, Float].include?(timeout.class)
+    end
   end
 
 end

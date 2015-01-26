@@ -27,6 +27,7 @@ class Eye::Dsl
     def parse(content = nil, filename = nil)
       Eye.parsed_config = Eye::Config.new
       Eye.parsed_filename = filename
+      Eye.parsed_default_app = nil
 
       content = File.read(filename) if content.blank?
 
@@ -34,7 +35,7 @@ class Eye::Dsl
         Kernel.eval(content, Eye::BINDING, filename.to_s)
       end
 
-      Eye.parsed_config.validate!
+      Eye.parsed_config.validate!(false)
       Eye.parsed_config
     end
 
@@ -43,7 +44,7 @@ class Eye::Dsl
     end
 
     def check_name(name)
-      raise Error, "not allow ':' in name '#{name}'" if name.to_s.include?(':')
+      raise Error, "':' is not allowed in name '#{name}'" if name.to_s.include?(':')
     end
   end
 end

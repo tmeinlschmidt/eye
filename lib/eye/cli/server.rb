@@ -1,3 +1,5 @@
+# encoding: utf-8
+
 module Eye::Cli::Server
 private
 
@@ -11,8 +13,7 @@ private
   end
 
   def ruby_path
-    require 'rbconfig'
-    RbConfig::CONFIG['bindir'] + '/ruby'
+    RbConfig.ruby
   end
 
   def ensure_loader_path
@@ -30,8 +31,13 @@ private
     end
 
     args = []
-    args += ['-c', conf] if conf
-    args += ['-l', 'stdout']
+    args += ['--config', conf] if conf
+    args += ['--logger', 'stdout']
+    if Eye::Local.local_runner
+      args += ['--stop_all']
+      args += ['--dir', Eye::Local.dir]
+      args += ['--config', Eye::Local.eyefile] unless conf
+    end
 
     Process.exec(ruby_path, loader_path, *args)
   end
@@ -43,6 +49,8 @@ private
     ensure_stop_previous_server
 
     args = []
+    args += ['--dir', Eye::Local.dir] if Eye::Local.local_runner
+
     opts = {:out => '/dev/null', :err => '/dev/null', :in => '/dev/null',
             :chdir => '/', :pgroup => true}
 
@@ -51,15 +59,16 @@ private
     File.open(Eye::Local.pid_path, 'w'){|f| f.write(pid) }
 
     unless wait_server
-      error! 'server not runned in 15 seconds, something crazy wrong'
+      error! 'server has not started in 15 seconds, something is very wrong'
     end
 
     configs.unshift(Eye::Local.eyeconfig) if File.exists?(Eye::Local.eyeconfig)
+    configs << Eye::Local.eyefile if Eye::Local.local_runner
+
+    say 'Eye started! ㋡', :green
 
     if !configs.empty?
-      say_load_result cmd(:load, *configs), :started => true
-    else
-      say 'started!', :green
+      say_load_result cmd(:load, *configs)
     end
   end
 

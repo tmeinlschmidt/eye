@@ -71,7 +71,7 @@ describe "Process Start" do
 
     it "process crashed, with config #{cfg[:name]}" do
       @process = process(cfg.merge(:start_command => cfg[:start_command] + " -r" ))
-      @process.start.should == {:error=>:not_realy_running}
+      @process.start.should == {:error=>:not_really_running}
 
       sleep 1
 
@@ -92,7 +92,7 @@ describe "Process Start" do
       @process = process(cfg.merge(:start_command => "asdf asdf1 r f324 f324f 32f44f"))
       mock(@process).check_crash
       res = @process.start
-      res.should == {:error=>"#<Errno::ENOENT: No such file or directory - asdf>"}
+      res[:error].should start_with("#<Errno::ENOENT: No such file or directory")
 
       sleep 0.5
 
@@ -106,7 +106,7 @@ describe "Process Start" do
       @process = process(cfg.merge(:stdout => "/var/run/1.log"))
       mock(@process).check_crash
       res = @process.start
-      res.should == {:error=>"#<Errno::EACCES: Permission denied - open>"}
+      res[:error].should start_with("#<Errno::EACCES: Permission denied")
 
       sleep 0.5
 
@@ -120,7 +120,7 @@ describe "Process Start" do
       @process = process(cfg.merge(:start_command => "./sample.rb"))
       mock(@process).check_crash
       res = @process.start
-      res.should == {:error=>"#<Errno::EACCES: Permission denied - ./sample.rb>"}
+      res[:error].should start_with("#<Errno::EACCES: Permission denied")
 
       sleep 0.5
 
@@ -218,7 +218,7 @@ describe "Process Start" do
     @process = process(C.p2.merge(:daemonize => true, :start_grace => 10.seconds))
     old_pid = @process.pid
 
-    @process.start.should == {:error => :not_realy_running}
+    @process.start.should == {:error => :not_really_running}
 
     sleep 5
 
@@ -232,7 +232,7 @@ describe "Process Start" do
     # NOT RECOMENDED FOR USE CASE
     @process = process(C.p2.merge(:daemonize => true, :pid_file => C.p2_pid, :start_grace => 10.seconds,
       :environment => {"FAILSAFE_PID_FILE" => C.just_pid}))
-    @process.start.should == {:error => :not_realy_running}
+    @process.start.should == {:error => :not_really_running}
     @process.pid.should == nil
 
     # to ensure kill this process

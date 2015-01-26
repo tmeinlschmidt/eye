@@ -31,8 +31,6 @@ class Eye::Controller
 
   attr_reader :applications, :current_config
 
-  exclusive :load # load is hard command, so better to run it safely blocked
-
   def initialize
     @applications = []
     @current_config = Eye::Config.new
@@ -40,7 +38,7 @@ class Eye::Controller
     Celluloid::logger = Eye::Logger.new('celluloid')
     Eye::SystemResources.cache
 
-    info "starting #{Eye::ABOUT} (#{$$})"
+    info "starting #{Eye::ABOUT} <#{$$}>"
   end
 
   def settings

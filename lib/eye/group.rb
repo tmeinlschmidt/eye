@@ -15,7 +15,7 @@ class Eye::Group
     @config = config
     @processes = Eye::Utils::AliveArray.new
     @hidden = (name == '__default__')
-    debug 'created'
+    debug { 'created' }
   end
 
   def logger_tag
@@ -111,6 +111,10 @@ class Eye::Group
 
   def signal(sig)
     async_schedule :signal, sig
+  end
+
+  def user_command(cmd)
+    async_schedule :user_command, cmd
   end
 
   def break_chain

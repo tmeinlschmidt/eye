@@ -2,7 +2,7 @@ require 'net/http'
 
 class Eye::Checker::Http < Eye::Checker::Defer
 
-  # checks :http, :every => 5.seconds, :times => 1,
+  # check :http, :every => 5.seconds, :times => 1,
   #  :url => "http://127.0.0.1:3000/", :kind => :success, :pattern => /OK/, :timeout => 3.seconds
 
   param :url,           String, true
@@ -33,10 +33,10 @@ class Eye::Checker::Http < Eye::Checker::Defer
     {:result => res}
 
   rescue Timeout::Error => ex
-    debug ex.inspect
+    debug { ex.inspect }
 
     if defined?(Net::OpenTimeout) # for ruby 2.0
-      mes = ex.class.is_a?(Net::OpenTimeout) ? "OpenTimeout<#{@open_timeout}>" : "ReadTimeout<#{@read_timeout}>"
+      mes = ex.is_a?(Net::OpenTimeout) ? "OpenTimeout<#{@open_timeout}>" : "ReadTimeout<#{@read_timeout}>"
       {:exception => mes}
     else
       {:exception => "Timeout<#{@open_timeout},#{@read_timeout}>"}

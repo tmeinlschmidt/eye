@@ -3,6 +3,16 @@ require File.dirname(__FILE__) + '/../spec_helper'
 describe "Eye::Controller::Load" do
   subject{ Eye::Controller.new }
 
+  it "command load exclusive" do
+    futures = []
+    should_spend(1.2, 0.2) do
+      futures << subject.future.command('load', fixture("dsl/just_sleep.eye"))
+      futures << subject.future.command('load', fixture("dsl/just_sleep.eye"))
+
+      futures.map(&:value).map{ |r| r.values.first[:error] }.should == [false, false]
+    end
+  end
+
   it "should set :current_config as Eye::Config class" do
     subject.load(fixture("dsl/load.eye"))
 
@@ -189,7 +199,7 @@ describe "Eye::Controller::Load" do
     res = subject.load(fixture("dsl/load2{,_dup_pid,_dup2}.eye"))
     res.ok_count.should == 2
     res.errors_count.should == 1
-    res.only_match(/load2_dup_pid\.eye/).should == {:error => true, :message=>"duplicate pid_files: {\"/tmp/app3-e1.pid\"=>2}"}
+    res.only_match(/load2_dup_pid\.eye/).should include(:error => true, :message=>"duplicate pid_files: {\"/tmp/app3-e1.pid\"=>2}")
   end
 
   it "two configs with same pids (should validate final config)" do
@@ -198,7 +208,7 @@ describe "Eye::Controller::Load" do
     res = subject.load(fixture("dsl/load2_*.eye"))
     res.size.should > 1
     res.errors_count.should == 1
-    res.only_match(/load2_dup_pid\.eye/).should == {:error => true, :message=>"duplicate pid_files: {\"/tmp/app3-e1.pid\"=>2}"}
+    res.only_match(/load2_dup_pid\.eye/).should include(:error => true, :message=>"duplicate pid_files: {\"/tmp/app3-e1.pid\"=>2}")
   end
 
   it "dups of pid_files, but they different with expand" do
@@ -246,15 +256,15 @@ describe "Eye::Controller::Load" do
   end
 
   it "order of applications and groups" do
-      with_temp_file(<<-F){ |f| subject.load(f ) }
-        Eye.app(:app2) { }
-        Eye.app(:app1) {
-          process("p"){ pid_file "1" }
-          group(:gr3){}
-          group(:gr2){}
-          group(:gr1){}
-        }
-      F
+    subject.load_content(<<-F)
+      Eye.app(:app2) { }
+      Eye.app(:app1) {
+        process("p"){ pid_file "1" }
+        group(:gr3){}
+        group(:gr2){}
+        group(:gr1){}
+      }
+    F
 
     subject.applications.map(&:name).should == %w{app1 app2}
     app = subject.applications[0]
@@ -275,7 +285,7 @@ describe "Eye::Controller::Load" do
     end
 
     it "load logger with rotation" do
-      with_temp_file(<<-S){ |f| res = subject.load(f) }
+      subject.load_content(<<-S)
         Eye.config { logger "/tmp/1.log", 7, 10000 }
       S
       Eye::Logger.dev.should == "/tmp/1.log"
@@ -285,13 +295,22 @@ describe "Eye::Controller::Load" do
       subject.load(fixture("dsl/load_logger.eye")).should_be_ok
       Eye::Logger.dev.should == "/tmp/1.loG"
 
-      res = nil
-      with_temp_file(<<-S){ |f| res = subject.load(f) }
+      res = subject.load_content(<<-S)
         Eye.config { logger "/tmp/asdfasdf/sd/f/sdf/sd/f/sdf/s" }
       S
 
       Eye::Logger.dev.should == "/tmp/1.loG"
       subject.current_config.settings.should == {:logger=>["/tmp/1.loG"], :logger_level => 0}
+    end
+
+    it "not set bad logger" do
+      subject.load_content(" Eye.config { logger 1 } ")
+      Eye::Logger.dev.should be
+    end
+
+    it "set custom logger" do
+      subject.load_content(" Eye.config { logger Logger.new('/tmp/eye_temp.log') } ")
+      Eye::Logger.dev.instance_variable_get(:@logdev).filename.should == '/tmp/eye_temp.log'
     end
 
     it "should corrent load config section" do
@@ -471,7 +490,7 @@ describe "Eye::Controller::Load" do
     end
 
     it "delete from empty app (was an exception)" do
-      with_temp_file(<<-F){ |f| subject.load(f ) }
+      subject.load_content(<<-F)
         Eye.app(:bla) { }
         Eye.app(:good) { group(:gr){}; process(:pr){ pid_file '1'} }
       F
@@ -564,5 +583,59 @@ describe "Eye::Controller::Load" do
 
       Celluloid::Actor.all.select { |c| c.class == Eye::Group }.size.should == 2
     end
+  end
+
+  describe "valiadate localize params" do
+    it "validate correct working_dir" do
+      conf = <<-E
+        Eye.application("bla") do
+          process("1") do
+            pid_file "1.pid"
+            working_dir "/tmp"
+          end
+        end
+      E
+      subject.load_content(conf).should_be_ok
+
+      conf = <<-E
+        Eye.application("bla") do
+          process("1") do
+            pid_file "1.pid"
+            working_dir "/tmp/asdfsdf//sdf/asdf/asd/f/asdf"
+          end
+        end
+      E
+      subject.load_content(conf).errors_count.should == 1
+      expect{ Eye::Dsl.parse_apps(conf) }.not_to raise_error(Eye::Process::Validate::Error)
+    end
+
+    [:uid, :gid].each do |s|
+      it "validate user #{s}" do
+        conf = <<-E
+          Eye.application("bla") do
+            process("1") do
+              pid_file "1.pid"
+              #{s} "root"
+            end
+          end
+        E
+        if RUBY_VERSION < '2.0' || (s == :gid && RUBY_PLATFORM.include?('darwin'))
+          subject.load_content(conf).errors_count.should == 1
+        else
+          subject.load_content(conf).should_be_ok
+        end
+
+        conf = <<-E
+          Eye.application("bla") do
+            process("1") do
+              pid_file "1.pid"
+              #{s} "asdfasdff23rf234f323f"
+            end
+          end
+        E
+        subject.load_content(conf).errors_count.should == 1
+      end
+    end
+
   end
 end

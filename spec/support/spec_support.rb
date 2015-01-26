@@ -1,6 +1,10 @@
 module C
   extend self
 
+  def working_dir
+    sample_dir
+  end
+
   def sample_dir
     File.expand_path(File.join(File.dirname(__FILE__), %w{.. example}))
   end
@@ -83,9 +87,10 @@ module C
       :start_command => "ruby forking.rb start",
       :stop_command => "ruby forking.rb stop",
       :pid_file => sample_dir + "/" + p3_pid,
-      :childs_update_period => Eye::SystemResources::cache.expire + 1,
+      :children_update_period => Eye::SystemResources::cache.expire + 1,
       :stop_timeout => 5.seconds,
-      :start_timeout => 15.seconds
+      :start_timeout => 15.seconds,
+      :notify => { "abcd" => :warn }
     )
   end
 
@@ -127,6 +132,14 @@ module C
     )
   end
 
+  def p6_word
+    '1234_my_sleppie'
+  end
+
+  def p6
+    p1.merge(:start_command => "sh -c 'sleep 10 && echo #{p6_word}'", :use_leaf_child => true, :start_grace => 0.5.seconds)
+  end
+
   def tmp_file
     C.sample_dir + "/1#{process_id}.tmp"
   end
@@ -140,11 +153,11 @@ module C
   end
 
   def check_ctime(a = {})
-    {:ctime => {:type => :ctime, :every => 2, :file => sample_dir + "/#{log_name}", :times => [3,5]}.merge(a)}
+    {:ctime => {:type => :ctime, :every => 2, :file => log_name, :times => [3,5]}.merge(a)}
   end
 
   def check_fsize(a = {})
-    {:fsize => {:type => :fsize, :every => 2, :file => sample_dir + "/#{log_name}", :times => [3,5]}.merge(a)}
+    {:fsize => {:type => :fsize, :every => 2, :file => log_name, :times => [3,5]}.merge(a)}
   end
 
   def check_http(a = {})
@@ -161,6 +174,14 @@ module C
      :times => 1, :addr => "tcp://127.0.0.1:#{p4_ports[0]}", :send_data => "ping",
      :expect_data => /pong/, :timeout => 2}.merge(a)
     }
+  end
+
+  def check_children_count(a = {})
+    {:children_count => {:type => :children_count, :every => 2.seconds, :below => 5, :times => 2}.merge(a)}
+  end
+
+  def check_children_memory(a = {})
+    {:children_memory => {:type => :children_memory, :every => 2.seconds, :below => 50.megabytes, :times => 2}.merge(a)}
   end
 
   def flapping(a = {})
@@ -207,7 +228,7 @@ def start_ok_process(cfg = C.p1)
   @process.start
   sleep 0.2
 
-  @process.process_realy_running?.should == true
+  @process.process_really_running?.should == true
   @process.pid.should > 0
   @process.watchers.keys.should == [:check_alive] if !cfg[:check_alive] == false
   @process.state_name.should == :up

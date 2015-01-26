@@ -2,6 +2,8 @@
 *.rbc
 .bundle
 .config
+.ruby-version
+.ruby-gemset
 .yardoc
 Gemfile.lock
 InstalledFiles
@@ -33,4 +35,5 @@ script
 *.cache
 *.tmp
 /vendor/
-
+*.gz
+.eye

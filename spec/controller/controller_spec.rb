@@ -78,7 +78,7 @@ describe "Eye::Controller" do
   it "should save cache file" do
     FileUtils.rm(Eye::Local.cache_path) rescue nil
     subject.load(fixture("dsl/load.eye"))
-    File.exists?(Eye::Local.cache_path).should be_true
+    File.exists?(Eye::Local.cache_path).should be_false
   end
 
   it "should delete all apps" do
@@ -88,15 +88,13 @@ describe "Eye::Controller" do
   end
 
   it "[bug] delete was crashed when we have 1 process and same named app" do
-    cfg = <<-D
+    subject.load_content(<<-D)
       Eye.application("bla") do
         process("bla") do
           pid_file "#{C.p1_pid}"
         end
       end
     D
-
-    with_temp_file(cfg){ |f| subject.load(f) }
     subject.command('delete', 'bla')
     subject.alive?.should be_true
   end
@@ -129,4 +127,28 @@ describe "Eye::Controller" do
 
   end
 
+  it "find_nearest_process" do
+    subject.load(fixture("dsl/load_dupls5.eye")).should_be_ok
+
+    p = subject.find_nearest_process('app1:p1')
+    p.full_name.should == 'app1:p1'
+
+    p = subject.find_nearest_process('p1')
+    p.full_name.should == 'app1:a:p1'
+
+    p = subject.find_nearest_process('asdfasdfsd')
+    p.should == nil
+
+    p = subject.find_nearest_process('p1', 'a')
+    p.full_name.should == 'app1:a:p1'
+
+    p = subject.find_nearest_process('p1', '__default__', 'app2')
+    p.full_name.should == 'app2:p1'
+
+    p = subject.find_nearest_process('p3', 'a')
+    p.full_name.should == 'app1:p3'
+
+    p = subject.find_nearest_process('p4', 'a', 'app1')
+    p.full_name.should == 'app2:p4'
+  end
 end

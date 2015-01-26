@@ -2,8 +2,10 @@ module Eye::Controller::Helpers
 
   def set_proc_line
     str = Eye::PROCLINE
-    str += " (#{@applications.map(&:name) * ', '})" if @applications.present?
-    str += " [#{ENV['EYE_V']}]" if ENV['EYE_V']
+    str = 'l' + str if Eye::Local.local_runner
+    str += " [#{@applications.map(&:name) * ', '}]" if @applications.present?
+    str += " (v #{ENV['EYE_V']})" if ENV['EYE_V']
+    str += " (in #{Eye::Local.dir})"
     $0 = str
   end
 
@@ -18,19 +20,43 @@ module Eye::Controller::Helpers
   end
 
   def process_by_name(name)
-    all_processes.detect{|c| c.name == name}
+    name = name.to_s
+    all_processes.detect { |c| c.name == name }
   end
 
   def process_by_full_name(name)
-    all_processes.detect{|c| c.full_name == name }
+    name = name.to_s
+    all_processes.detect { |c| c.full_name == name }
+  end
+
+  def find_nearest_process(name, group_name = nil, app_name = nil)
+    return process_by_full_name(name) if name.include?(':')
+
+    if app_name
+      app = application_by_name(app_name)
+      app.groups.each do |gr|
+        p = gr.processes.detect { |c| c.name == name }
+        return p if p
+      end
+    end
+
+    if group_name
+      gr = group_by_name(group_name)
+      p = gr.processes.detect { |c| c.name == name }
+      return p if p
+    end
+
+    process_by_name(name)
   end
 
   def group_by_name(name)
-    all_groups.detect{|c| c.name == name}
+    name = name.to_s
+    all_groups.detect { |c| c.name == name }
   end
 
   def application_by_name(name)
-    @applications.detect{|c| c.name == name}
+    name = name.to_s
+    @applications.detect { |c| c.name == name }
   end
 
   def all_processes

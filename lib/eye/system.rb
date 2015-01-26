@@ -1,10 +1,10 @@
 require 'shellwords'
-require 'pathname'
 require 'etc'
+require 'timeout'
 
 module Eye::System
   class << self
-    # Check that pid realy exits
+    # Check that pid really exits
     # very fast
     # return result hash
     def check_pid_alive(pid)
@@ -19,7 +19,7 @@ module Eye::System
       {:error => ex}
     end
 
-    # Check that pid realy exits
+    # Check that pid really exits
     # very fast
     # return true/false
     def pid_alive?(pid)
@@ -86,7 +86,7 @@ module Eye::System
 
     rescue Timeout::Error => ex
       if pid
-        warn "[#{cfg[:name]}] send signal 9 to #{pid} (because of timeouted<#{timeout}> execution)"
+        warn "[#{cfg[:name]}] sending :KILL signal to <#{pid}> due to timeout (#{timeout}s)"
         send_signal(pid, 9)
       end
       {:error => ex}
@@ -100,25 +100,28 @@ module Eye::System
 
     # normalize file
     def normalized_file(file, working_dir = nil)
-      Pathname.new(file).expand_path(working_dir).to_s
+      File.expand_path(file, working_dir)
     end
 
-  private
-
     def spawn_options(config = {})
-      o = {pgroup: true, chdir: config[:working_dir] || '/'}
-      o.update(out: [config[:stdout], 'a']) if config[:stdout]
-      o.update(err: [config[:stderr], 'a']) if config[:stderr]
-      o.update(in: config[:stdin]) if config[:stdin]
+      options = {
+        pgroup: true,
+        chdir: config[:working_dir] || '/'
+      }
+
+      options[:out]   = [config[:stdout], 'a'] if config[:stdout]
+      options[:err]   = [config[:stderr], 'a'] if config[:stderr]
+      options[:in]    = config[:stdin] if config[:stdin]
+      options[:umask] = config[:umask] if config[:umask]
+      options[:close_others] = false if config[:preserve_fds]
+      options[:unsetenv_others] = true if config[:clear_env]
 
       if Eye::Local.root?
-        o.update(uid: Etc.getpwnam(config[:uid]).uid) if config[:uid]
-        o.update(gid: Etc.getpwnam(config[:gid]).gid) if config[:gid]
+        options[:uid] = Etc.getpwnam(config[:uid]).uid if config[:uid]
+        options[:gid] = Etc.getgrnam(config[:gid]).gid if config[:gid]
       end
 
-      o.update(umask: config[:umask]) if config[:umask]
-
-      o
+      options
     end
 
     def prepare_env(config = {})

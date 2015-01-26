@@ -1,3 +1,5 @@
+require 'celluloid'
+
 class Eye::Notify
   include Celluloid
   include Eye::Dsl::Validation
@@ -9,8 +11,8 @@ class Eye::Notify
 
   def self.get_class(type)
     klass = eval("Eye::Notify::#{TYPES[type]}") rescue nil
-    raise "Unknown notify #{type}" unless klass
-    if deps = klass.depends_on
+    raise "unknown notifier :#{type}" unless klass
+    if deps = klass.requires
       Array(deps).each { |d| require d }
     end
     klass
@@ -26,7 +28,7 @@ class Eye::Notify
     needed_hash = (settings[:contacts] || {})[contact]
 
     if needed_hash.blank?
-      error "not found contact #{contact}! something wrong with config"
+      error "contact #{contact} not found; check your configuration"
       return
     end
 
@@ -48,13 +50,13 @@ class Eye::Notify
     log_ex(ex)
   end
 
-  TIMEOUT = 1.minute
+  TIMEOUT = 1 * 60
 
   def initialize(options = {}, message_h = {})
     @message_h = message_h
     @options = options
 
-    debug "created notifier #{options}"
+    debug { "created notifier #{options}" }
   end
 
   def logger_sub_tag
@@ -67,14 +69,14 @@ class Eye::Notify
   end
 
   def notify
-    debug "start notify #{@message_h}"
+    debug { "start notify #{@message_h}" }
     execute
-    debug "end notify #{@message_h}"
+    debug { "end notify #{@message_h}" }
     terminate
   end
 
   def execute
-    raise 'realize me'
+    raise NotImplementedError
   end
 
   param :contact, [String]
@@ -95,7 +97,7 @@ class Eye::Notify
     Eye::Dsl::ConfigOpts.add_notify(type)
   end
 
-  def self.depends_on
+  def self.requires
   end
 
   class Custom < Eye::Notify

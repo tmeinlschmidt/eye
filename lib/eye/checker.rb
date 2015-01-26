@@ -11,16 +11,19 @@ class Eye::Checker
   autoload :Nop,        'eye/checker/nop'
   autoload :Runtime,    'eye/checker/runtime'
   autoload :Cputime,    'eye/checker/cputime'
+  autoload :ChildrenCount, 'eye/checker/children_count'
+  autoload :ChildrenMemory,'eye/checker/children_memory'
 
   TYPES = {:memory => 'Memory', :cpu => 'Cpu', :http => 'Http',
            :ctime => 'FileCTime', :fsize => 'FileSize', :file_touched => 'FileTouched',
-           :socket => 'Socket', :nop => 'Nop', :runtime => 'Runtime', :cputime => 'Cputime' }
+           :socket => 'Socket', :nop => 'Nop', :runtime => 'Runtime', :cputime => 'Cputime',
+           :children_count => "ChildrenCount", :children_memory => "ChildrenMemory" }
 
   attr_accessor :value, :values, :options, :pid, :type, :check_count, :process
 
   param :every, [Fixnum, Float], false, 5
   param :times, [Fixnum, Array], nil, 1
-  param :fires, [Symbol, Array], nil, nil, [:stop, :restart, :unmonitor, :nothing, :start, :delete]
+  param :fires, [Symbol, Array], nil, nil, [:stop, :restart, :unmonitor, :start, :delete, :nothing, :notify]
   param :initial_grace, [Fixnum, Float]
   param :skip_initial_fails, [TrueClass, FalseClass]
 
@@ -37,7 +40,7 @@ class Eye::Checker
   def self.get_class(type)
     klass = eval("Eye::Checker::#{TYPES[type]}") rescue nil
     raise "Unknown checker #{type}" unless klass
-    if deps = klass.depends_on
+    if deps = klass.requires
       Array(deps).each { |d| require d }
     end
     klass
@@ -63,7 +66,7 @@ class Eye::Checker
     @full_name = @process.full_name if @process
     @initialized_at = Time.now
 
-    debug "create checker, with #{options}"
+    debug { "create checker, with #{options}" }
 
     @value = nil
     @values = Eye::Utils::Tail.new(max_tries)
@@ -75,7 +78,7 @@ class Eye::Checker
   end
 
   def logger_tag
-    @process.logger.prefix
+    @process.logger.prefix if @process
   end
 
   def logger_sub_tag
@@ -93,7 +96,7 @@ class Eye::Checker
 
   def check
     if initial_grace && (Time.now - @initialized_at < initial_grace)
-      debug 'skipped initial grace'
+      debug { 'skipped initial grace' }
       return true
     else
       @options[:initial_grace] = nil
@@ -131,7 +134,7 @@ class Eye::Checker
   end
 
   def get_value
-    raise 'Realize me'
+    raise NotImplementedError
   end
 
   def human_value(value)
@@ -180,6 +183,15 @@ class Eye::Checker
     process.instance_exec(&p) if process.alive?
   end
 
+  def fire
+    actions = fires ? Array(fires) : [:restart]
+    process.notify :warn, "Bounded #{check_name}: #{last_human_values} send to #{actions}"
+
+    actions.each do |action|
+      process.schedule action, Eye::Reason.new("bounded #{check_name}")
+    end
+  end
+
   def defer(&block)
     Celluloid::Future.new(&block).value
   end
@@ -197,7 +209,7 @@ class Eye::Checker
     Eye::Checker.const_set(name, base)
   end
 
-  def self.depends_on
+  def self.requires
   end
 
   class CustomCell < Eye::Checker
@@ -218,6 +230,29 @@ class Eye::Checker
     def self.inherited(base)
       super
       register(base)
+    end
+  end
+
+  class Measure < Eye::Checker
+    param :below, [Fixnum, Float]
+    param :above, [Fixnum, Float]
+
+    def good?(value)
+      return false if below && (value > below)
+      return false if above && (value < above)
+      true
+    end
+
+    def measure_str
+      if below && above
+        ">#{human_value(above)}<#{human_value(below)}"
+      elsif below
+        "<#{human_value(below)}"
+      elsif above
+        ">#{human_value(above)}"
+      else
+        '-'
+      end
     end
   end
 end

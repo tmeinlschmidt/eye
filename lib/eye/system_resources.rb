@@ -15,8 +15,8 @@ class Eye::SystemResources
       end
     end
 
-    def childs(parent_pid)
-      cache.childs(parent_pid)
+    def children(parent_pid)
+      cache.children(parent_pid)
     end
 
     def start_time(pid) # unixtime
@@ -30,6 +30,14 @@ class Eye::SystemResources
       if cpu = cache.proc_cpu(pid)
         cpu.total.to_f / 1000
       end
+    end
+
+    # last child in a children tree
+    def leaf_child(pid)
+      c = children(pid)
+      return if c.empty?
+      c += children(c.shift) while c.size > 1
+      c[0]
     end
 
     def resources(pid)
@@ -79,7 +87,7 @@ class Eye::SystemResources
     rescue ArgumentError # when incorrect PID
     end
 
-    def childs(pid)
+    def children(pid)
       if pid
         @ppids[pid] ||= Eye::Sigar.proc_list("State.Ppid.eq=#{pid}")
       else

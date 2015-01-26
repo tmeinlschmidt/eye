@@ -1,3 +1,5 @@
+# encoding: utf-8
+
 gem 'thor'
 require 'thor'
 
@@ -11,16 +13,28 @@ class Eye::Cli < Thor
   include Eye::Cli::Render
 
   desc "info [MASK]", "processes info"
+  method_option :json, :type => :boolean, :aliases => "-j"
   def info(mask = nil)
     res = cmd(:info_data, *Array(mask))
-    say render_info(res)
-    say
+    if mask && res[:subtree] && res[:subtree].empty?
+      error!("command :info, objects not found!")
+    end
+
+    if options[:json]
+      require 'json'
+      say JSON.dump(res)
+    else
+      say render_info(res)
+      say
+    end
   end
 
-  desc "status", "processes info (deprecated)"
-  def status
-    say ":status is deprecated, use :info instead", :yellow
-    info
+  desc "status NAME", "return exit status for process name 0-up, 3-unmonitored"
+  def status(name)
+    res = cmd(:info_data, *Array(name))
+    es, msg = render_status(res)
+    say(msg, :red) if msg && !msg.empty?
+    exit(es)
   end
 
   desc "xinfo", "eye-deamon info (-c show current config)"
@@ -41,6 +55,9 @@ class Eye::Cli < Thor
   desc "history [MASK,...]", "processes history"
   def history(*masks)
     res = cmd(:history_data, *masks)
+    if !masks.empty? && res && res.empty?
+      error!("command :history, objects not found!")
+    end
     say render_history(res)
     say
   end
@@ -52,10 +69,11 @@ class Eye::Cli < Thor
 
     if options[:foreground]
       # in foreground we stop another server, and run just 1 current config version
-      error!("foreground expected only one config") if configs.size != 1
+      error!("foreground expected only one config") if configs.size > 1
       server_start_foreground(configs.first)
 
     elsif server_started?
+      configs << Eye::Local.eyefile if Eye::Local.local_runner
       say_load_result cmd(:load, *configs)
 
     else
@@ -65,7 +83,15 @@ class Eye::Cli < Thor
   end
 
   desc "quit", "eye-daemon quit"
+  method_option :stop_all, :type => :boolean, :aliases => "-s"
+  method_option :timeout, :type => :string, :aliases => "-t", :default => "600"
   def quit
+    if options[:stop_all]
+      Eye::Local.client_timeout = options[:timeout].to_i
+      cmd(:stop_all, options[:timeout].to_i)
+    end
+
+    Eye::Local.client_timeout = Eye::Local.default_client_timeout
     res = _cmd(:quit)
 
     # if eye server got crazy, stop by force
@@ -74,7 +100,7 @@ class Eye::Cli < Thor
     # remove pid_file
     File.delete(Eye::Local.pid_path) if File.exists?(Eye::Local.pid_path)
 
-    say "quit...", :yellow
+    say "Quit ಠ╭╮ಠ", :yellow
   end
 
   [:start, :stop, :restart, :unmonitor, :monitor, :delete, :match].each do |_cmd|
@@ -144,6 +170,11 @@ class Eye::Cli < Thor
   rescue Interrupt
   end
 
+  desc "user_command CMD [MASK]", "execute user_command (dsl command)"
+  def user_command(cmd, *args)
+    send_command(:user_command, cmd, *args)
+  end
+
 private
 
   def error!(msg)
@@ -165,4 +196,7 @@ private
     end
   end
 
+  def self.exit_on_failure?
+    true
+  end
 end

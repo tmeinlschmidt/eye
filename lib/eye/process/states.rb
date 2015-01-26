@@ -2,6 +2,7 @@ require 'state_machine'
 require 'state_machine/version'
 
 class Eye::Process
+  class StateError < Exception; end
 
   # do transition
   def switch(name, reason = nil)
@@ -61,8 +62,8 @@ class Eye::Process
     after_transition any-:up => :up, :do => :add_watchers
     after_transition :up => any-:up, :do => :remove_watchers
 
-    after_transition any-:up => :up, :do => :add_childs
-    after_transition any => [:unmonitored, :down], :do => :remove_childs
+    after_transition any-:up => :up, :do => :add_children
+    after_transition any => [:unmonitored, :down], :do => :remove_children
 
     after_transition :on => :crashed, :do => :on_crashed
   end
@@ -76,8 +77,10 @@ class Eye::Process
   end
 
   def log_transition(transition)
-    @states_history.push transition.to_name, @state_reason
-    info "switch :#{transition.event} [:#{transition.from_name} => :#{transition.to_name}] #{@state_reason ? "(reason: #{@state_reason})" : nil}"
+    if transition.to_name != transition.from_name || @state_reason.is_a?(Eye::Reason::User)
+      @states_history.push transition.to_name, @state_reason
+      info "switch :#{transition.event} [:#{transition.from_name} => :#{transition.to_name}] #{@state_reason ? "(reason: #{@state_reason})" : nil}"
+    end
   end
 
 end

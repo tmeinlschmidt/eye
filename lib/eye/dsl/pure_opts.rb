@@ -79,13 +79,13 @@ class Eye::Dsl::PureOpts
     self.instance_eval(&block) if cond && block
   end
 
-  def include(proc, *args)
+  def use(proc, *args)
     if proc.is_a?(String)
       self.class.with_parsed_file(proc) do |path|
         if File.exists?(path)
-          Eye::Dsl.debug "=> load #{path}"
+          Eye::Dsl.debug { "=> load #{path}" }
           self.instance_eval(File.read(path))
-          Eye::Dsl.debug "<= load #{path}"
+          Eye::Dsl.debug { "<= load #{path}" }
         end
       end
     else
@@ -106,11 +106,10 @@ private
   def self.with_parsed_file(file_name)
     saved_parsed_filename = Eye.parsed_filename
 
-    require 'pathname'
 
     real_filename = Eye.parsed_filename && File.symlink?(Eye.parsed_filename) ? File.readlink(Eye.parsed_filename) : Eye.parsed_filename
     dirname = File.dirname(real_filename) rescue nil
-    path = Pathname.new(file_name).expand_path(dirname).to_s
+    path = File.expand_path(file_name, dirname)
 
     Eye.parsed_filename = path
     yield path

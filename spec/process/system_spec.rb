@@ -61,15 +61,15 @@ describe "Eye::Process::System" do
     File.exists?(@process[:pid_file_ex]).should == false
   end
 
-  it "process_realy_running?" do
+  it "process_really_running?" do
     @process.pid = $$
-    @process.process_realy_running?.should == true
+    @process.process_really_running?.should == true
 
     @process.pid = nil
-    @process.process_realy_running?.should == false
+    @process.process_really_running?.should == false
 
     @process.pid = -123434
-    @process.process_realy_running?.should == false
+    @process.process_really_running?.should == false
   end
 
   it "send_signal ok" do
@@ -102,6 +102,29 @@ describe "Eye::Process::System" do
         @process.name.should == cfg[:name]
       end
     end
+  end
+
+  it "execute_sync helper" do
+    filename = "asdfasdfsd.tmp"
+    full_filename = C.working_dir + "/" + filename
+    FileUtils.rm(full_filename) rescue nil
+    File.exists?(full_filename).should == false
+    res = @process.execute_sync("touch #{filename}")
+    File.exists?(full_filename).should == true
+    FileUtils.rm(full_filename) rescue nil
+    res[:exitstatus].should == 0
+  end
+
+  it "execute_async helper" do
+    filename = "asdfasdfsd.tmp"
+    full_filename = C.working_dir + "/" + filename
+    FileUtils.rm(full_filename) rescue nil
+    File.exists?(full_filename).should == false
+    res = @process.execute_async("touch #{filename}")
+    sleep 0.2
+    File.exists?(full_filename).should == true
+    FileUtils.rm(full_filename) rescue nil
+    res[:exitstatus].should == 0
   end
 
   context "#wait_for_condition" do

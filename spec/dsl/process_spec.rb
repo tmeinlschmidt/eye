@@ -244,6 +244,32 @@ describe "Eye::Dsl" do
 
   end
 
+  describe "stop_signals" do
+    it "set" do
+      conf = <<-E
+        Eye.app("bla") { process('1') { pid_file '1'; stop_signals :Quit, 1 } }
+      E
+      r = Eye::Dsl.parse_apps(conf)
+      r['bla'][:groups]['__default__'][:processes]['1'][:stop_signals].should == [:Quit, 1]
+
+      conf = <<-E
+        Eye.app("bla") { process('1') { pid_file '1'; stop_signals [:Quit, 1] } }
+      E
+      r = Eye::Dsl.parse_apps(conf)
+      r['bla'][:groups]['__default__'][:processes]['1'][:stop_signals].should == [:Quit, 1]
+    end
+
+    it "get" do
+      conf = <<-E
+        Eye.app("bla") { pp = process('1') { pid_file '1'; stop_signals :Quit, 1 }
+          process('2') { pid_file '2'; stop_signals pp.stop_signals }
+        }
+      E
+      r = Eye::Dsl.parse_apps(conf)
+      r['bla'][:groups]['__default__'][:processes]['2'][:stop_signals].should == [:Quit, 1]
+    end
+  end
+
   describe "validation" do
     it "bad string" do
       conf = "Eye.app('bla'){ self.working_dir = {} }"
@@ -366,57 +392,170 @@ describe "Eye::Dsl" do
       E
       expect{Eye::Dsl.parse_apps(conf)}.not_to raise_error(Eye::Process::Validate::Error)
     end
+  end
 
-    it "validate correct working_dir" do
+  it "validate stop_signals" do
+    conf = <<-E
+      Eye.application("bla"){ process("1") { pid_file "1.pid"; stop_signals [:QUIT, :KILL] } }
+    E
+    expect{Eye::Dsl.parse_apps(conf)}.to raise_error(Eye::Dsl::Error)
+
+    conf = <<-E
+      Eye.application("bla"){ process("1") { pid_file "1.pid"; stop_signals [:QUIT] } }
+    E
+    expect{Eye::Dsl.parse_apps(conf)}.not_to raise_error
+
+    conf = <<-E
+      Eye.application("bla"){ process("1") { pid_file "1.pid"; stop_signals [:QUIT, 10] } }
+    E
+    expect{Eye::Dsl.parse_apps(conf)}.not_to raise_error
+
+    conf = <<-E
+      Eye.application("bla"){ process("1") { pid_file "1.pid"; stop_signals :QUIT, 10 } }
+    E
+    expect{Eye::Dsl.parse_apps(conf)}.not_to raise_error
+
+    conf = <<-E
+      Eye.application("bla"){ process("1") { pid_file "1.pid"; stop_signals [9, 15] } }
+    E
+    expect{Eye::Dsl.parse_apps(conf)}.not_to raise_error
+
+    conf = <<-E
+      Eye.application("bla"){ process("1") { pid_file "1.pid"; stop_signals ['kill', 15] } }
+    E
+    expect{Eye::Dsl.parse_apps(conf)}.not_to raise_error
+  end
+
+  it "depend_on" do
       conf = <<-E
         Eye.application("bla") do
           process("1") do
             pid_file "1.pid"
-            working_dir "/tmp"
+          end
+          process("2") do
+            pid_file "2.pid"
+            depend_on '1'
           end
         end
       E
-      expect{Eye::Dsl.parse_apps(conf)}.not_to raise_error(Eye::Process::Validate::Error)
+      Eye::Dsl.parse_apps(conf).should == {"bla" => {:name=>"bla",
+        :groups=>{"__default__"=>{:name=>"__default__", :application=>"bla",
+          :processes=>{
+            "1"=>{:name=>"1", :application=>"bla", :group=>"__default__", :pid_file=>"1.pid",
+              :triggers=>{
+                :check_dependency_2=>{:names=>["2"], :type=>:check_dependency}}},
+            "2"=>{:name=>"2", :application=>"bla", :group=>"__default__", :pid_file=>"2.pid",
+              :triggers=>{:wait_dependency_1=>{:names=>["1"], :type=>:wait_dependency}}}}}}}}
+  end
 
+  it "depend_on reverse" do
       conf = <<-E
         Eye.application("bla") do
+          process("2") do
+            pid_file "2.pid"
+            depend_on '1'
+          end
           process("1") do
             pid_file "1.pid"
-            working_dir "/tmp/asdfsdf//sdf/asdf/asd/f/asdf"
           end
         end
       E
-      expect{Eye::Dsl.parse_apps(conf)}.to raise_error(Eye::Process::Validate::Error)
+      Eye::Dsl.parse_apps(conf).should == {"bla" => {:name=>"bla",
+        :groups=>{"__default__"=>{:name=>"__default__", :application=>"bla",
+          :processes=>{
+            "1"=>{:name=>"1", :application=>"bla", :group=>"__default__",
+              :triggers=>{:check_dependency_2=>{:names=>["2"], :type=>:check_dependency}}, :pid_file=>"1.pid"},
+            "2"=>{:name=>"2", :application=>"bla", :group=>"__default__", :pid_file=>"2.pid",
+              :triggers=>{:wait_dependency_1=>{:names=>["1"], :type=>:wait_dependency}}}}}}}}
+  end
+
+  it "bug in depend_on #60" do
+    conf = <<-E
+class Bla < Eye::Checker::Custom
+end
+
+Eye.app :dependency do
+  group :bla do
+    check :memory, :below => 100
+
+    process(:a) do
+      start_command "sleep 100"
+      daemonize true
+      pid_file "/tmp/test_process_a.pid"
+      check :cpu, :below => 100
+      check :bla
+      trigger :stop_children
     end
 
-    [:uid, :gid].each do |s|
-      it "validate user #{s}" do
-        conf = <<-E
-          Eye.application("bla") do
-            process("1") do
-              pid_file "1.pid"
-              #{s} "root"
-            end
-          end
-        E
-        if RUBY_VERSION >= '2.0'
-          expect{Eye::Dsl.parse_apps(conf)}.not_to raise_error
-        else
-          expect{Eye::Dsl.parse_apps(conf)}.to raise_error
+    process(:b) do
+      start_command "sleep 100"
+      daemonize true
+      pid_file "/tmp/test_process_b.pid"
+      depend_on :a
+    end
+
+    process(:c) do
+      start_command "sleep 100"
+      daemonize true
+      pid_file "/tmp/test_process_c.pid"
+      depend_on :a
+    end
+  end
+end
+    E
+
+    Eye::Dsl.parse_apps(conf).should == {
+      "dependency" => {:name=>"dependency", :groups=>{
+        "bla"=>{:name=>"bla", :application=>"dependency",
+          :checks=>{:memory=>{:below=>100, :type=>:memory}}, :processes=>{
+            "a"=>{:name=>"a", :application=>"dependency",
+              :checks=>{:memory=>{:below=>100, :type=>:memory}, :cpu=>{:below=>100, :type=>:cpu}, :bla=>{:type=>:bla}}, :group=>"bla", :start_command=>"sleep 100", :daemonize=>true, :pid_file=>"/tmp/test_process_a.pid",
+              :triggers=>{:stop_children=>{:type=>:stop_children}, :check_dependency_2=>{:names=>["b"], :type=>:check_dependency}, :check_dependency_4=>{:names=>["c"], :type=>:check_dependency}}},
+            "b"=>{:name=>"b", :application=>"dependency",
+              :checks=>{:memory=>{:below=>100, :type=>:memory}}, :group=>"bla", :start_command=>"sleep 100", :daemonize=>true, :pid_file=>"/tmp/test_process_b.pid",
+              :triggers=>{:wait_dependency_1=>{:names=>["a"], :type=>:wait_dependency}}},
+            "c"=>{:name=>"c", :application=>"dependency",
+              :checks=>{:memory=>{:below=>100, :type=>:memory}}, :group=>"bla", :start_command=>"sleep 100", :daemonize=>true, :pid_file=>"/tmp/test_process_c.pid",
+              :triggers=>{:wait_dependency_3=>{:names=>["a"], :type=>:wait_dependency}}}}}}}}
+  end
+
+  describe "load_env" do
+    it "from file" do
+      conf = <<-E
+        Eye.application("bla") do
+          load_env "#{fixture('dsl/env1')}"
         end
-
-        conf = <<-E
-          Eye.application("bla") do
-            process("1") do
-              pid_file "1.pid"
-              #{s} "asdfasdff23rf234f323f"
-            end
-          end
-        E
-        expect{Eye::Dsl.parse_apps(conf)}.to raise_error
-      end
+      E
+      Eye::Dsl.parse_apps(conf)['bla'][:environment].should == {"A"=>"11", "B" => "12=13"}
     end
 
+    it "file not found" do
+      conf = <<-E
+        Eye.application("bla") do
+          load_env "#{fixture('dsl/env2')}"
+        end
+      E
+      expect{Eye::Dsl.parse_apps(conf)}.to raise_error
+    end
+
+    it "file not found, but ignore option" do
+      conf = <<-E
+        Eye.application("bla") do
+          load_env "#{fixture('dsl/env2')}", false
+        end
+      E
+      Eye::Dsl.parse_apps(conf)['bla'][:environment].should == nil
+    end
+
+    it "expand path from working_dir" do
+      conf = <<-E
+        Eye.application("bla") do
+          working_dir "#{File.dirname(fixture('dsl/env1'))}"
+          load_env "env1"
+        end
+      E
+      Eye::Dsl.parse_apps(conf)['bla'][:environment].should == {"A"=>"11", "B" => "12=13"}
+    end
   end
 
 end

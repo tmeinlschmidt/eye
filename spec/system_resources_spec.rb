@@ -27,13 +27,13 @@ describe "Eye::SystemResources" do
     pid = 12342341
     Eye::SystemResources.cpu(pid).should == nil
     Eye::SystemResources.memory(pid).should == nil
-    Eye::SystemResources.childs(pid).should == []
+    Eye::SystemResources.children(pid).should == []
 
     pid = nil
     Eye::SystemResources.cpu(pid).should == nil
     Eye::SystemResources.memory(pid).should == nil
     Eye::SystemResources.start_time(pid).should == nil
-    Eye::SystemResources.childs(pid).should == []
+    Eye::SystemResources.children(pid).should == []
   end
 
   it "should get start time" do
@@ -42,12 +42,21 @@ describe "Eye::SystemResources" do
     x.should <= 2000000000
   end
 
-  it "should get childs" do
+  it "should get children" do
     @pid = fork { at_exit{}; sleep 3; exit }
+    Process.detach(@pid)
     sleep 0.5
-    x = Eye::SystemResources.childs($$)
+    x = Eye::SystemResources.children($$)
     x.class.should == Array
     x.should include(@pid)
+  end
+
+  it "should get leaf_child" do
+    @pid = fork { at_exit{}; sleep 3; exit }
+    Process.detach(@pid)
+    sleep 0.5
+    x = Eye::SystemResources.leaf_child($$)
+    x.should == @pid
   end
 
   it "should cache and update when interval" do

@@ -3,11 +3,13 @@ class Eye::Trigger
 
   autoload :Flapping,   'eye/trigger/flapping'
   autoload :Transition, 'eye/trigger/transition'
-  autoload :StopChilds, 'eye/trigger/stop_childs'
+  autoload :StopChildren, 'eye/trigger/stop_children'
+  autoload :WaitDependency, 'eye/trigger/wait_dependency'
+  autoload :CheckDependency, 'eye/trigger/check_dependency'
 
-  # ex: { :type => :flapping, :times => 2, :within => 30.seconds}
-
-  TYPES = {:flapping => 'Flapping', :transition => 'Transition', :stop_childs => 'StopChilds'}
+  TYPES = {:flapping => 'Flapping', :transition => 'Transition', :stop_children => 'StopChildren',
+    :wait_dependency => 'WaitDependency', :check_dependency => 'CheckDependency'
+  }
 
   attr_reader :message, :options, :process
 
@@ -23,8 +25,8 @@ class Eye::Trigger
 
   def self.get_class(type)
     klass = eval("Eye::Trigger::#{TYPES[type]}") rescue nil
-    raise "Unknown trigger #{type}" unless klass
-    if deps = klass.depends_on
+    raise "unknown trigger #{type}" unless klass
+    if deps = klass.requires
       Array(deps).each { |d| require d }
     end
     klass
@@ -47,7 +49,7 @@ class Eye::Trigger
     @process = process
     @full_name = @process.full_name if @process
 
-    debug "add #{options}"
+    debug { "add #{options}" }
   end
 
   def inspect
@@ -63,14 +65,18 @@ class Eye::Trigger
   end
 
   def notify(transition, reason)
-    debug "check (:#{transition.event}) :#{transition.from} => :#{transition.to}"
+    debug { "check (:#{transition.event}) :#{transition.from} => :#{transition.to}" }
     @reason = reason
     @transition = transition
 
     check(transition) if filter_transition(transition)
 
   rescue Exception, Timeout::Error => ex
-    log_ex(ex)
+    if ex.class == Eye::Process::StateError
+      raise ex
+    else
+      log_ex(ex)
+    end
   end
 
   param :to, [Symbol, Array]
@@ -86,7 +92,7 @@ class Eye::Trigger
   end
 
   def check(transition)
-    raise 'realize me'
+    raise NotImplementedError
   end
 
   def run_in_process_context(p)
@@ -104,7 +110,7 @@ class Eye::Trigger
     Eye::Trigger.const_set(name, base)
   end
 
-  def self.depends_on
+  def self.requires
   end
 
   class Custom < Eye::Trigger

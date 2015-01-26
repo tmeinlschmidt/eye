@@ -25,14 +25,33 @@ module Eye::Dsl::Validation
 
       validates[param] = types
       should_bes << param if should_be
-      defaults[param] = default
+      param_default(param, default)
       variants[param] = _variants
 
       return if param == :do
 
       define_method "#{param}" do
-        @options[param] || default
+        value = @options[param]
+        value.nil? ? default : value
       end
+
+      define_method "#{param}=" do |value|
+        @options[param] = value
+      end
+    end
+
+    def param_default(param, default)
+      param = param.to_sym
+      defaults[param] = default
+    end
+
+    def del_param(param)
+      param = param.to_sym
+      validates.delete(param)
+      should_bes.delete(param)
+      defaults.delete(param)
+      variants.delete(param)
+      remove_method(param)
     end
 
     def validate(options = {})
@@ -49,10 +68,10 @@ module Eye::Dsl::Validation
           if value && !value.is_a?(Proc)
             if value.is_a?(Array)
               if (value - self.variants[param]).present?
-                raise Error, "#{value.inspect} should within #{self.variants[param].inspect}"
+                raise Error, "#{value.inspect} should be within #{self.variants[param].inspect}"
               end
             elsif !self.variants[param].include?(value)
-              raise Error, "#{value.inspect} should within #{self.variants[param].inspect}"
+              raise Error, "#{value.inspect} should be within #{self.variants[param].inspect}"
             end
           end
         end

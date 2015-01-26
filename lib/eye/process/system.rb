@@ -3,10 +3,12 @@ require 'timeout'
 module Eye::Process::System
 
   def load_pid_from_file
-    if File.exists?(self[:pid_file_ex])
+    res = if File.exists?(self[:pid_file_ex])
       _pid = File.read(self[:pid_file_ex]).to_i
       _pid > 0 ? _pid : nil
     end
+
+    res
   end
 
   def set_pid_from_file
@@ -36,16 +38,20 @@ module Eye::Process::System
     File.ctime(self[:pid_file_ex]) rescue Time.now
   end
 
-  def process_realy_running?
-    res = Eye::System.check_pid_alive(self.pid)
-    debug "process_realy_running?: (#{self.pid}) #{res.inspect}"
+  def process_really_running?
+    process_pid_running?(self.pid)
+  end
+
+  def process_pid_running?(pid)
+    res = Eye::System.check_pid_alive(pid)
+    debug { "process_really_running?: <#{pid}> #{res.inspect}" }
     !!res[:result]
   end
 
   def send_signal(code)
     res = Eye::System.send_signal(self.pid, code)
 
-    msg = "send_signal #{code} to #{self.pid}"
+    msg = "send_signal #{code} to <#{self.pid}>"
     msg += ", error<#{res[:error]}>" if res[:error]
     info msg
 
@@ -70,6 +76,18 @@ module Eye::Process::System
     defer{ Eye::System::execute cmd, cfg }
   end
 
+  def execute_sync(cmd, opts = {:timeout => 1.second})
+    res = execute cmd, self.config.merge(opts)
+    info "execute_sync `#{cmd}` with res: #{res}"
+    res
+  end
+
+  def execute_async(cmd, opts = {})
+    res = Eye::System.daemonize(cmd, self.config.merge(opts))
+    info "execute_async `#{cmd}` with res: #{res}"
+    res
+  end
+
   def failsafe_load_pid
     pid = load_pid_from_file
 
@@ -88,6 +106,10 @@ module Eye::Process::System
   rescue => ex
     log_ex(ex)
     false
+  end
+
+  def expand_path(path)
+    File.expand_path(path, self[:working_dir])
   end
 
 end

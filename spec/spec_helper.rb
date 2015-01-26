@@ -22,7 +22,7 @@ Eye::Process
 class Eye::Controller
   public :find_objects, :remove_object_from_tree, :matched_objects
   def load_erb(file); with_erb_file(file){|f| self.load(f) }; end
-  def load_content(cont); with_temp_file(cont){|f| self.load(f) }; end
+  def load_content(cont); res = nil; with_temp_file(cont){|f| res = self.load(f) }; res; end
 end
 
 require 'rspec/mocks'
@@ -35,6 +35,8 @@ require File.join(File.dirname(__FILE__), %w{support load_result})
 def process_id
   ENV['TEST_ENV_NUMBER'].to_i
 end
+
+ENV['EYE_FULL_BACKTRACE'] = '1'
 
 $logger_path = File.join(File.dirname(__FILE__), ["spec#{process_id}.log"])
 
@@ -70,6 +72,8 @@ RSpec.configure do |config|
 
     @log = C.base[:stdout]
     FileUtils.rm(@log) rescue nil
+    @pids = []
+    $unique_num = 0
 
     stub(Eye::Local).dir { C.sample_dir }
 

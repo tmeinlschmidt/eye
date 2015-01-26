@@ -11,17 +11,17 @@ module Eye::Process::Watchers
         check_alive
       end
 
-      # monitor childs pids
+      # monitor children pids
       if self[:monitor_children]
-        add_watcher(:check_childs, self[:childs_update_period]) do
-          add_or_update_childs
+        add_watcher(:check_children, self[:children_update_period]) do
+          add_or_update_children
         end
       end
 
       # monitor conditional watchers
       start_checkers
     else
-      warn 'try add_watchers, but its already here'
+      warn 'add_watchers failed, watchers are already present'
     end
   end
 
@@ -35,10 +35,10 @@ private
   def add_watcher(type, period = 2, subject = nil, &block)
     return if @watchers[type]
 
-    debug "add watcher #{type}(#{period})"
+    debug { "adding watcher: #{type}(#{period})" }
 
     timer = every(period.to_f) do
-      debug "check #{type}"
+      debug { "check #{type}" }
       block.call(subject)
     end
 
@@ -59,13 +59,7 @@ private
   def watcher_tick(subject)
     unless subject.check
       return unless up?
-
-      actions = subject.fires ? Array(subject.fires) : [:restart]
-      notify :warn, "Bounded #{subject.check_name}: #{subject.last_human_values} send to #{actions}"
-
-      actions.each do |action|
-        schedule action, Eye::Reason.new("bounded #{subject.check_name}")
-      end
+      subject.fire
     end
   end
 

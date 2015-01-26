@@ -70,6 +70,22 @@ describe "Eye::Dsl" do
     cfg['bla'][:groups]['__default__'][:processes][:some].should == nil
   end
 
+  it "should set application defaults" do
+    conf = <<-E
+      Eye.application('__default__'){ env "A" => "B" }
+      Eye.application(:__default__){ env "B" => "C" }
+
+      Eye.application("bla") do
+        process("11") do
+          pid_file "1"
+        end
+      end
+    E
+    cfg = Eye::Dsl.parse_apps(conf)
+    cfg['bla'][:environment].should == {"A"=>"B", "B"=>"C"}
+    cfg['bla'][:groups]['__default__'][:processes]['11'][:environment].should == {"A"=>"B", "B"=>"C"}
+  end
+
   it "set uid option" do
     conf = <<-E
       Eye.application("bla") do
@@ -87,5 +103,12 @@ describe "Eye::Dsl" do
       expect{Eye::Dsl.parse_apps(conf)}.to raise_error(Eye::Dsl::Error)
     end
   end
+
+  it "should set clear_bundler_env" do
+    conf = " Eye.app(:bla){  clear_bundler_env; env 'A' => 1 }"
+    cfg = Eye::Dsl.parse_apps(conf)
+    cfg['bla'][:environment].should == {"GEM_PATH"=>nil, "GEM_HOME"=>nil, "RUBYOPT"=>nil, "BUNDLE_BIN_PATH"=>nil, "BUNDLE_GEMFILE"=>nil, "A" => 1}
+  end
+
 
 end

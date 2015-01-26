@@ -24,6 +24,15 @@ OptionParser.new do |opts|
     options[:logger] = logger
   end
 
+  opts.on( '-dr', '--dir DIR', 'Dir for local runner' ) do |dir|
+    Eye::Local.dir = dir
+    Eye::Local.local_runner = true
+  end
+
+  opts.on( '-st', '--stop_all', 'Stop all on exit' ) do |stop_all|
+    options[:stop_all] = true
+  end
+
   opts.on( '-d', '--debug', 'debug info to logger' ) do
     options[:debug] = true
   end
@@ -45,15 +54,19 @@ Eye::Control # preload
 
 if config
   res = server.command('load', config)
-  exit if res.values.any? { |r| r[:error] }
+  exit(1) if res.values.any? { |r| r[:error] }
 end
 
 Eye::Control.set_proc_line
 
 server.async.run
 
-trap("INT"){ exit }
-trap("USR1"){ Eye::Logger.reopen }
-trap("USR2"){ GC.start }
+trap("USR1") { Eye::Logger.reopen }
+trap("USR2") { GC.start }
+trap("INT")  { Eye::Logger.info("INT signal <#{$$}>"); exit }
+trap("QUIT") { Eye::Logger.info("QUIT signal <#{$$}>"); exit }
+trap("TERM") { Eye::Logger.info("TERM signal <#{$$}>"); exit }
+
+at_exit { Eye::Control.command(:stop_all) } if options[:stop_all]
 
 sleep

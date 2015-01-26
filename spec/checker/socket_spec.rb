@@ -74,6 +74,24 @@ describe "Socket Checker" do
         c.check.should == false
       end
     end
+
+    describe "raw protocol '#{addr}'" do
+      before :each do
+        start_ok_process(C.p4)
+      end
+
+      it "good answer" do
+        c = chsock(:addr => addr, :send_data => 'raw', :expect_data => "raw_ans", :timeout => 0.5, :protocol => :raw)
+        c.get_value.should == {:result => 'raw_ans'}
+        c.check.should == true
+      end
+
+      it "timeout when using without :raw" do
+        c = chsock(:addr => addr, :send_data => 'raw', :expect_data => "raw_ans", :timeout => 0.5)
+        c.get_value.should == {:exception => "ReadTimeout<0.5>"}
+        c.check.should == false
+      end
+    end
   end
 
   describe "em object protocol" do
